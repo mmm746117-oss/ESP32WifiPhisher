@@ -15,10 +15,22 @@
 
 
 static const char *TAG = "WEBSERVER";
+static const char *OTA_UPLOAD_PASSWORD = "esp32ota";
 static httpd_handle_t server = NULL;
 static uint8_t attack_scheme = 0xff;
 static QueueHandle_t ws_frame_queue = NULL;
 static TaskHandle_t ws_frame_process_task_handle = NULL;
+
+
+static bool ota_password_matches(httpd_req_t *req)
+{
+    char password[64] = {0};
+    esp_err_t err = httpd_req_get_hdr_value_str(req, "X-OTA-Password", password, sizeof(password));
+    if (err != ESP_OK) {
+        return false;
+    }
+    return strcmp(password, OTA_UPLOAD_PASSWORD) == 0;
+}
 
 
 static void ws_send_work(void *arg)
@@ -83,10 +95,15 @@ static void ws_frame_process_task(void *pvParameter)
 }
 
 
-/* Receive a raw application image and write it directly to the inactive OTA slot.
- * The client sends the .bin as the request body (not multipart/form-data). */
 static esp_err_t ota_upload_handler(httpd_req_t *req)
 {
+    if (!ota_password_matches(req)) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"error\",\"message\":\"Invalid OTA password\"}");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
     if (update_partition == NULL) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No OTA partition available");
@@ -157,7 +174,7 @@ static esp_err_t cors_prevention_handler(httpd_req_t *req)
 {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, OPTIONS");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type, X-OTA-Password");
     return httpd_resp_send(req, NULL, 0);
 }
 

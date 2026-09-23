@@ -15,6 +15,7 @@
 <body><main>
   <h1>Firmware update</h1>
   <p>Select the compiled ESP32 <code>.bin</code> firmware image. Keep this device powered while it updates.</p>
+  <input id="otaPassword" type="password" placeholder="OTA password" autocomplete="current-password">
   <input id="firmware" type="file" accept=".bin,application/octet-stream">
   <button id="upload">Upload firmware</button>
   <progress id="progress" value="0" max="100" hidden></progress>
@@ -22,12 +23,16 @@
 </main>
 <script>
 const fileInput=document.getElementById('firmware'), button=document.getElementById('upload');
+const passwordInput=document.getElementById('otaPassword');
 const progress=document.getElementById('progress'), status=document.getElementById('status');
 button.onclick=()=>{
   const file=fileInput.files[0];
+  const password=passwordInput.value.trim();
   if(!file){status.textContent='Choose a firmware image first.';return;}
+  if(!password){status.textContent='Enter the OTA password first.';return;}
   button.disabled=true; progress.hidden=false; progress.value=0; status.textContent='Uploading…';
   const xhr=new XMLHttpRequest(); xhr.open('POST','/api/ota'); xhr.setRequestHeader('Content-Type','application/octet-stream');
+  xhr.setRequestHeader('X-OTA-Password', password);
   xhr.upload.onprogress=e=>{if(e.lengthComputable)progress.value=e.loaded/e.total*100;};
   xhr.onload=()=>{if(xhr.status===200){progress.value=100;status.textContent='Update installed. Reconnecting…';setTimeout(()=>location.reload(),7000);}else{status.textContent='Update failed: '+(xhr.responseText||xhr.status);button.disabled=false;}};
   xhr.onerror=()=>{status.textContent='Upload failed or connection was lost.';button.disabled=false;}; xhr.send(file);
